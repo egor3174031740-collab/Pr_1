@@ -1,0 +1,78 @@
+-- сортировка по дате по возрастанию, перевести строковую дату на встроенный тип даты
+
+local date1 = {
+    data = {},   
+    passage = {},     
+    original = {}     
+}
+
+function parseDate(str)
+    local year, month, day = string.match(str, "(%d+)-(%d+)-(%d+)")
+    if not year then return nil end
+    return os.time({ year = tonumber(year), month = tonumber(month), day = tonumber(day), hour = 0 })
+end
+
+function date1.extract(car_list)
+    date1.data = {}
+    date1.passage = {}
+    date1.original = {}
+
+    for _, item in ipairs(car_list) do
+        local date_str, plate = string.match(item, "^(%S+)%s+(%S+)")
+        if date_str and plate then
+            local time_val = parseDate(date_str)
+            if time_val then
+                table.insert(date1.data, time_val)
+                table.insert(date1.passage, plate)
+                table.insert(date1.original, item)
+            else
+                print("неверный формат даты в строке: ", item)
+            end
+        end
+    end
+end
+
+function date1.sortByDate()
+    local indices = {}
+    for i = 1, #date1.data do
+        indices[i] = i
+    end
+
+  
+    table.sort(indices, function(a, b)
+        return date1.data[a] < date1.data[b]
+    end)
+
+    
+    local sorted_data = {}
+    local sorted_passage = {}
+
+    for _, idx in ipairs(indices) do
+        table.insert(sorted_data, date1.data[idx])
+        table.insert(sorted_passage, date1.passage[idx])
+    end
+
+    date1.data = sorted_data
+    date1.passage = sorted_passage
+end
+
+function date1.print()
+    for i = 1, #date1.data do
+        local readable_date = os.date("%Y-%m-%d", date1.data[i])
+        print(readable_date, date1.passage[i])
+    end
+end
+
+local car_infos = {
+    "2001-11-12 A000BC",
+    "2004-03-10 E003EK",
+    "2003-03-10 K009VO",
+    "2005-03-10 K009VO",
+    "2000-03-10 K009VO",
+    "2000-03-15 K009VO",
+    "2000-03-11 K009VO"
+}
+
+date1.extract(car_infos)
+date1.sortByDate()
+date1.print() -- сортировка по номерам знаков, вызвать конфликт через вторую ветку.
