@@ -1,116 +1,149 @@
-local date1 = {
-    data = {},   
-    passage = {},     
-    original = {}     
-}
+-- ============ Модуль DateRecord ============
+local DateRecord = {}
 
-function parseDate(str)
-    local year, month, day = string.match(str, "(%d+)-(%d+)-(%d+)")
-    if not year then return nil end
-    return os.time({ year = tonumber(year), month = tonumber(month), day = tonumber(day), hour = 0 })
+function DateRecord.new(str)
+    local date_str, plate = string.match(str, "^(%S+)%s+(%S+)")
+    if not (date_str and plate) then
+        error("Invalid format: expected 'YYYY-MM-DD PLATE', got '" .. tostring(str) .. "'", 2)
+    end
+
+    local year, month, day = string.match(date_str, "^(%d%d%d%d)-(%d%d)-(%d%d)$")
+    if not (year and month and day) then
+        error("Invalid date format in: '" .. date_str .. "'", 2)
+    end
+
+    year, month, day = tonumber(year), tonumber(month), tonumber(day)
+
+    -- Создаем время и сразу же конвертируем обратно в строку
+    local time_val = os.time({ year = year, month = month, day = day, hour = 12 })
+    if not time_val then
+        error("Invalid calendar date: " .. date_str, 2)
+    end
+
+    local normalized_date = os.date("%Y-%m-%d", time_val)
+    if normalized_date ~= date_str then
+        error("Normalized date differs from input: " .. date_str .. " → " .. normalized_date, 2)
+    end
+
+    -- Проверим, что номерной знак состоит только из заглавных букв и цифр
+    if not string.match(plate, "^[A-ZА-Я0-9]+$") then
+        error("Invalid plate format: must contain only uppercase letters/digits", 2)
+    end
+
+    return {
+        original = str,
+        timestamp = time_val,
+        plate = plate,
+        date_str = date_str
+    }
 end
 
-function date1.extract(car_list)
-    date1.data = {}
-    date1.passage = {}
-    date1.original = {}
+-- ============ Основной модуль DateList ============
+local DateList = {
+    records = {}
+}
 
-    for _, item in ipairs(car_list) do
-        local date_str, plate = string.match(item, "^(%S+)%s+(%S+)")
-        if date_str and plate then
-            local time_val = parseDate(date_str)
-            if time_val then
-                table.insert(date1.data, time_val)
-                table.insert(date1.passage, plate)
-                table.insert(date1.original, item)
-            else
-                print("неверный формат даты в строке: ", item)
-            end
+function DateList.clear()
+    DateList.records = {}
+end
+
+function DateList.extract(car_list)
+    DateList.clear()
+    for i, item in ipairs(car_list) do
+        local ok, rec = pcall(DateRecord.new, item)
+        if not ok then
+            print("Ошибка в строке", i, ":", rec)
         else
-            print("неверный формат строки: ", item)
+            table.insert(DateList.records, rec)
         end
     end
 end
 
-function date1.sortByDate()
-    local indices = {}
-    for i = 1, #date1.data do
-        indices[i] = i
-    end
-
-    table.sort(indices, function(a, b)
-        return date1.data[a] < date1.data[b]
+function DateList.sortByDate()
+    table.sort(DateList.records, function(a, b)
+        return a.timestamp < b.timestamp
     end)
-
-    date1._applyIndices(indices)
 end
 
-function date1.sortByPlateLetter()
-    local indices = {}
-    for i = 1, #date1.passage do
-        indices[i] = i
-    end
-
-    table.sort(indices, function(a, b)
-        local letterA = string.sub(date1.passage[a], 1, 1):upper()
-        local letterB = string.sub(date1.passage[b], 1, 1):upper()
+function DateList.sortByPlateLetter()
+    table.sort(DateList.records, function(a, b)
+        local letterA = string.sub(a.plate, 1, 1):upper()
+        local letterB = string.sub(b.plate, 1, 1):upper()
         return letterA < letterB
     end)
-
-    date1._applyIndices(indices)
 end
 
--- Вспомогательная функция: переставляет все три массива по списку индексов
-function date1._applyIndices(indices)
-    local new_data = {}
-    local new_passage = {}
-    local new_original = {}
-
-    for _, idx in ipairs(indices) do
-        table.insert(new_data, date1.data[idx])
-        table.insert(new_passage, date1.passage[idx])
-        table.insert(new_original, date1.original[idx])
-    end
-
-    date1.data = new_data
-    date1.passage = new_passage
-    date1.original = new_original
-end
-
-function date1.print()
-    for i = 1, #date1.data do
-        local readable_date = os.date("%Y-%m-%d", date1.data[i])
-        print(readable_date, date1.passage[i])
+function DateList.print()
+    for _, rec in ipairs(DateList.records) do
+        local readable = os.date("%Y-%m-%d", rec.timestamp)
+        print(readable, rec.plate)
     end
 end
 
--- Основная логика
-local car_infos = {
-    "2001-11-12 A000BC",
-    "2004-03-10 E003EK",
-    "2003-03-10 K009VO",
-    "2005-03-10 K009VO",
-    "2000-03-10 K009VO",
-    "2000-03-15 K009VO",
-    "2000-03-11 K009VO"
-}
+-- ============ Тесты ============
+local function run_tests()
+    local tests = {
+        { input = "2001-11-12 A000BC", valid = true },
+        { input = "2000-02-30 K009VO", valid = false }, -- неверная дата
+        { input = "2000-13-01 X123YZ", valid = false }, -- месяц > 12
+        { input = "bad input", valid = false },
+        { input = "2005-01-01", valid = false }, -- нет номера
+        { input = "2005-01-01 a000bc", valid = false }, -- маленькие буквы
+        { input = "2005-01-01 A000BC", valid = true },
+        { input = "1999-12-31 Z999ZZ", valid = true }
+    }
 
-date1.extract(car_infos)
+    local passed = 0
+    local total = #tests
 
--- Запрос у пользователя
-print("Выберите способ сортировки:")
-print("1 - по дате")
-print("2 - по первой букве номерного знака")
-io.write("Ваш выбор: ")
-local choice = io.read("*l")
+    for i, t in ipairs(tests) do
+        local ok, _ = pcall(DateRecord.new, t.input)
+        if ok == t.valid then
+            passed = passed + 1
+        else
+            print("❌Тест", i, "провален для:", t.input)
+        end
+    end
 
-if choice == "1" then
-    date1.sortByDate()
-elseif choice == "2" then
-    date1.sortByPlateLetter()
+    print("\n✅Пройдено тестов:", passed, "/", total)
+end
+
+-- ============ Основная программа ============
+-- Проверяем, передан ли аргумент "test"
+local is_test_mode = false
+for _, arg_val in ipairs(arg or {}) do
+    if arg_val == "test" then
+        is_test_mode = true
+        break
+    end
+end
+
+if is_test_mode then
+    run_tests()
 else
-    print("Неверный выбор. Используется сортировка по дате по умолчанию.")
-    date1.sortByDate()
-end
+    local car_infos = {
+        "2001-11-12 A000BC",
+        "2004-03-10 E003EK",
+        "2003-03-10 K009VO",
+        "2005-03-10 K009VO",
+        "2000-03-10 K009VO",
+        "2000-03-15 K009VO",
+        "2000-03-11 K009VO"
+    }
 
-date1.print()
+    DateList.extract(car_infos)
+
+    print("Выберите способ сортировки:")
+    print("1 - по дате")
+    print("2 - по первой букве номерного знака")
+    io.write("Ваш выбор: ")
+    local choice = io.read("*l")
+
+    if choice == "1" then
+        DateList.sortByDate()
+    elseif choice == "2" then
+        DateList.sortByPlateLetter()
+    else
+        print("Неверный выбор. Используется сортировка по дате по умолчанию.")
+        DateList.sortByDate()
+    end
