@@ -2,7 +2,7 @@ import datetime
 import sys
 
 class Date1:
-    def init(self):
+    def init(self): 
         self.data = []      # list of datetime.date objects
         self.passage = []   # list of license plates
         self.original = []  # list of original strings
